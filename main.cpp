@@ -199,6 +199,7 @@ int main()
         TTF_Font *font = sdlCall(TTF_OpenFont)("Terminus.ttf", 32);
 
         sdlCall(SDL_CreateWindowAndRenderer)(SCREEN_WIDTH, SCREEN_HEIGHT, 0, &window, &renderer);
+        sdlCall(SDL_SetWindowTitle)(window, "Bouncy games");
 
         givePointEventType = sdlCall(SDL_RegisterEvents)(1);
 
@@ -216,7 +217,6 @@ int main()
         // Add scoreboard to the game
         auto &scores = dynamic_cast<scoreboard&>(*objects.emplace_back(new scoreboard{renderer, font, SCREEN_WIDTH / 2, 0}));
 
-        std::unique_ptr<const std::string> title;
         uint64_t lastFrameTicks = sdlCall(SDL_GetTicks64)();
         float deltaTime = 0.016f;
         bool running = true;
@@ -266,11 +266,6 @@ int main()
             }
             deltaTime = (sdlCall(SDL_GetTicks64)() - lastFrameTicks) / 1000.0f;
             lastFrameTicks = currentFrameTicks;
-
-            // Do this weird thing with std::unique_ptr to ensure that SDL never ends up with a stale pointer
-            auto newTitle = std::make_unique<std::string>("FPS: " + std::to_string((int)(1.0f / deltaTime)));
-            sdlCall(SDL_SetWindowTitle)(window, newTitle->c_str());
-            title = std::move(newTitle);
         }
 
         sdlCall(SDL_DestroyTexture)(tex1);
