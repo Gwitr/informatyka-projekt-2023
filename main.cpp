@@ -6,6 +6,7 @@
 #include <iostream>          // std::cout
 #include <exception>         // std::exception
 #include <string>            // std::string
+#include <string_view>       // std::string_view
 #include <memory>            // std::unique_ptr
 #include <vector>            // std::vector
 #include <unordered_map>     // std::unordered_map
@@ -14,6 +15,7 @@
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
+#include <SDL2/SDL_ttf.h>
 
 const int SCREEN_WIDTH = 1080, SCREEN_HEIGHT = 810;
 
@@ -58,12 +60,12 @@ uint32_t givePointEventType;
 class object {
 protected:
     SDL_Renderer *const m_renderer;
-    SDL_Texture *const m_texture;
+    SDL_Texture *m_texture;
 
     int m_texWidth, m_texHeight;
 
     float m_x, m_y;
-    
+
     const int m_startX, m_startY;
 
     int m_maxX, m_maxY;
@@ -74,9 +76,11 @@ public:
         : m_renderer{renderer}, m_texture{tex}, m_x{(float)startX}, m_y{(float)startY},
           m_startX{startX}, m_startY{startY}
     {
-        int _1;
-        uint32_t _2;
-        sdlCall(SDL_QueryTexture)(tex, &_2, &_1, &m_texWidth, &m_texHeight);
+        if (tex) {
+            int _1;
+            uint32_t _2;
+            sdlCall(SDL_QueryTexture)(tex, &_2, &_1, &m_texWidth, &m_texHeight);
+        }
         sdlCall(SDL_GetRendererOutputSize)(renderer, &m_maxX, &m_maxY);
     }
 
@@ -243,6 +247,75 @@ public:
     }
 };
 
+/*
+ * Utility function for creating a new texture with new text in place of an old one
+ */
+void update_text(SDL_Renderer *renderer, TTF_Font *font, std::string_view newText, SDL_Color color, SDL_Texture *&textOut, int &textWidth, int &textHeight)
+{
+    SDL_Surface *textSurface = sdlCall(TTF_RenderText_Solid)(font, newText.data(), color);
+    if (textOut)
+        sdlCall(SDL_DestroyTexture)(textOut);
+    textOut = sdlCall(SDL_CreateTextureFromSurface)(renderer, textSurface);
+    sdlCall(SDL_FreeSurface)(textSurface);
+
+    uint32_t _1;
+    int _2;
+    sdlCall(SDL_QueryTexture)(textOut, &_1, &_2, &textWidth, &textHeight);
+}
+
+
+class scoreboard : public object
+{
+    TTF_Font *const m_font;
+
+    int m_score1 = 0, m_score2 = 0;
+
+    void update_score_text()
+    {
+        update_text(m_renderer, m_font, std::to_string(m_score1) + " - " + std::to_string(m_score2), { 0, 0, 0, 255 }, m_texture, m_texWidth, m_texHeight);
+    }
+
+public:
+    scoreboard(SDL_Renderer *renderer, TTF_Font *font, int startX, int startY)
+        : object{renderer, NULL, startX, startY}, m_font{font}
+    {
+        update_score_text();
+    }
+
+    scoreboard(const scoreboard &) = delete;  // Make sure to forbid copying as I'm too lazy to implement it
+    scoreboard(scoreboard &&other)
+        : object{other}, m_font{other.m_font}
+    {
+        m_score1 = other.m_score1;
+        m_score2 = other.m_score2;
+        other.m_texture = NULL;
+    }
+
+    virtual void draw() const override
+    {
+        // Draw the text anchored to the middle
+        SDL_Rect srcrect = { 0, 0, m_texWidth, m_texHeight };
+        SDL_Rect dstrect = { (int)(m_x - m_texWidth / 2.0f), (int)m_y, m_texWidth, m_texHeight };
+        sdlCall(SDL_RenderCopy)(m_renderer, m_texture, &srcrect, &dstrect);
+    }
+
+    ~scoreboard()
+    {
+        // We own the texture, so make sure to destroy it
+        SDL_DestroyTexture(m_texture);
+    }
+
+    void addPoint(int player)
+    {
+        if (player == 0)
+            ++m_score1;
+        else
+            ++m_score2;
+
+        update_score_text();
+    }
+};
+
 int main()
 {
     SDL_Window *window;
@@ -250,78 +323,91 @@ int main()
 
     sdlCall(SDL_Init)(SDL_INIT_EVERYTHING);
     sdlCall(IMG_Init)(IMG_INIT_JPG | IMG_INIT_PNG);
+    sdlCall(TTF_Init)();
+    {
+        TTF_Font *font = sdlCall(TTF_OpenFont)("Terminus.ttf", 32);
 
-    sdlCall(SDL_CreateWindowAndRenderer)(SCREEN_WIDTH, SCREEN_HEIGHT, 0, &window, &renderer);
+        sdlCall(SDL_CreateWindowAndRenderer)(SCREEN_WIDTH, SCREEN_HEIGHT, 0, &window, &renderer);
 
-    givePointEventType = sdlCall(SDL_RegisterEvents)(1);
+        givePointEventType = sdlCall(SDL_RegisterEvents)(1);
 
-    SDL_Texture *tex1 = sdlCall(IMG_LoadTexture)(renderer, "paddle.png");
-    SDL_Texture *tex2 = sdlCall(IMG_LoadTexture)(renderer, "ball.png");
+        SDL_Texture *tex1 = sdlCall(IMG_LoadTexture)(renderer, "paddle.png");
+        SDL_Texture *tex2 = sdlCall(IMG_LoadTexture)(renderer, "ball.png");
 
-    std::vector<std::unique_ptr<object>> objects;
-    // Add player 1 paddle to game
-    objects.emplace_back(new paddle{renderer, tex1, 25, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_q, SDLK_a});
-    // Add player 2 paddle to game
-    objects.emplace_back(new paddle{renderer, tex1, SCREEN_WIDTH - 25 - 32, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_o, SDLK_l});
-    // Add ball to game
-    objects.emplace_back(new ball{renderer, tex2, SCREEN_WIDTH / 2 - 16, SCREEN_HEIGHT / 2 - 16, 300.0f});
+        std::vector<std::unique_ptr<object>> objects;
+        // Add player 1 paddle to game
+        objects.emplace_back(new paddle{renderer, tex1, 25, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_q, SDLK_a});
+        // Add player 2 paddle to game
+        objects.emplace_back(new paddle{renderer, tex1, SCREEN_WIDTH - 25 - 32, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_o, SDLK_l});
+        // Add ball to game
+        objects.emplace_back(new ball{renderer, tex2, SCREEN_WIDTH / 2 - 16, SCREEN_HEIGHT / 2 - 16, 300.0f});
+        // Add scoreboard to game
+        auto &scores = dynamic_cast<scoreboard&>(*objects.emplace_back(new scoreboard{renderer, font, SCREEN_WIDTH / 2, 0}));
 
-    std::unique_ptr<const std::string> title;
-    uint64_t lastFrameTicks = sdlCall(SDL_GetTicks64)();
-    float deltaTime = 0.016f;
-    bool running = true;
+        std::unique_ptr<const std::string> title;
+        uint64_t lastFrameTicks = sdlCall(SDL_GetTicks64)();
+        float deltaTime = 0.016f;
+        bool running = true;
 
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        sdlCall(SDL_SetRenderDrawColor)(renderer, 255, 255, 255, 255);
 
-    while (running) {
-        // Handle events
-        SDL_Event event;
-        while (sdlCall(SDL_PollEvent)(&event)) {
-            if (event.type == SDL_QUIT) {
-                running = false;
+        while (running) {
+            // Handle events
+            SDL_Event event;
+            while (sdlCall(SDL_PollEvent)(&event)) {
+                if (event.type == SDL_QUIT) {
+                    running = false;
 
-            } else if (event.type == SDL_KEYDOWN) {
-                for (auto &object : objects)
-                    object->keyDown(event.key.keysym.sym);
+                } else if (event.type == SDL_KEYDOWN) {
+                    for (auto &object : objects)
+                        object->keyDown(event.key.keysym.sym);
 
-            } else if (event.type == SDL_KEYUP) {
-                for (auto &object : objects)
-                    object->keyUp(event.key.keysym.sym);
+                } else if (event.type == SDL_KEYUP) {
+                    for (auto &object : objects)
+                        object->keyUp(event.key.keysym.sym);
 
-            } else if (event.type == givePointEventType) {
-                std::cout << "Side " << (intptr_t)event.user.data1 << " scored" << std::endl;
-                for (auto &object : objects)
-                    object->reset();
+                } else if (event.type == givePointEventType) {
+                    // Reset the world
+                    for (auto &object : objects)
+                        object->reset();
+
+                    // Update the score
+                    scores.addPoint((intptr_t)event.user.data1);
+                }
             }
+
+            // Update
+            for (auto &object : objects)
+                object->update(deltaTime, objects);
+
+            // Render
+            sdlCall(SDL_RenderClear)(renderer);
+            for (auto &object : objects)
+                object->draw();
+            sdlCall(SDL_RenderPresent)(renderer);
+
+            // Lock to 60 FPS
+            uint64_t currentFrameTicks = sdlCall(SDL_GetTicks64)();
+            deltaTime = (currentFrameTicks - lastFrameTicks) / 1000.0f;
+            if (deltaTime < 0.016f) {
+                sdlCall(SDL_Delay)(16 - 1000 * deltaTime);
+            }
+            deltaTime = (sdlCall(SDL_GetTicks64)() - lastFrameTicks) / 1000.0f;
+            lastFrameTicks = currentFrameTicks;
+
+            // Do this weird thing with std::unique_ptr to ensure that SDL never ends up with a stale pointer
+            auto newTitle = std::make_unique<std::string>("FPS: " + std::to_string((int)(1.0f / deltaTime)));
+            sdlCall(SDL_SetWindowTitle)(window, newTitle->c_str());
+            title = std::move(newTitle);
         }
 
-        // Update
-        for (auto &object : objects)
-            object->update(deltaTime, objects);
+        sdlCall(SDL_DestroyTexture)(tex1);
+        sdlCall(SDL_DestroyTexture)(tex2);
 
-        // Render
-        sdlCall(SDL_RenderClear)(renderer);
-        for (auto &object : objects)
-            object->draw();
-        sdlCall(SDL_RenderPresent)(renderer);
-
-        // Lock to 60 FPS
-        uint64_t currentFrameTicks = sdlCall(SDL_GetTicks64)();
-        deltaTime = (currentFrameTicks - lastFrameTicks) / 1000.0f;
-        if (deltaTime < 0.016f) {
-            sdlCall(SDL_Delay)(16 - 1000 * deltaTime);
-        }
-        deltaTime = (sdlCall(SDL_GetTicks64)() - lastFrameTicks) / 1000.0f;
-        lastFrameTicks = currentFrameTicks;
-
-        // Do this weird thing with std::unique_ptr to ensure that SDL never ends up with a stale pointer
-        auto newTitle = std::make_unique<std::string>("FPS: " + std::to_string((int)(1.0f / deltaTime)));
-        sdlCall(SDL_SetWindowTitle)(window, newTitle->c_str());
-        title = std::move(newTitle);
+        sdlCall(TTF_CloseFont)(font);
     }
 
-    sdlCall(SDL_DestroyTexture)(tex1);
-    sdlCall(SDL_DestroyTexture)(tex2);
+    sdlCall(TTF_Quit)();
     sdlCall(IMG_Quit)();
     sdlCall(SDL_Quit)();
 
