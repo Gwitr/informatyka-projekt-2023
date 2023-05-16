@@ -1,15 +1,10 @@
-#include <cstdint>   // uint32_t, intptr_t
-#include <stdlib.h>
-
+#include <cstdint>           // uint32_t, intptr_t
 #include <cmath>             // sqrtf
 #include <algorithm>         // std::find
 #include <iostream>          // std::cout
-#include <exception>         // std::exception
 #include <string>            // std::string
-#include <string_view>       // std::string_view
 #include <memory>            // std::unique_ptr
 #include <vector>            // std::vector
-#include <unordered_map>     // std::unordered_map
 #include <initializer_list>  // std::initializer_list
 
 #define SDL_MAIN_HANDLED
@@ -17,126 +12,10 @@
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_ttf.h>
 
-const int SCREEN_WIDTH = 1080, SCREEN_HEIGHT = 810;
-
-class sdl_error : public std::exception
-{
-    const char *m_what;
-public:
-    sdl_error(const char *what)
-        : m_what{what} {}
-    
-    const char *what() const throw()
-    {
-        return m_what;
-    }
-};
-
-template<typename ReturnType, typename ...ArgTypes>
-constexpr auto sdlCall(ReturnType (*func)(ArgTypes...))
-{
-    // NOTE: I decided against perfect forwarding as it prevents automatic casts for some reason
-    return [func](ArgTypes... args)
-    {
-        SDL_ClearError();
-        if constexpr (std::is_same_v<ReturnType, void>) {
-            func(args ...);
-            const char *err = SDL_GetError();
-            if (err[0] != 0)
-                throw sdl_error(err);
-
-        } else {
-            decltype(auto) value = func(args ...);
-            const char *err = SDL_GetError();
-            if (err[0] != 0)
-                throw sdl_error(err);
-            return value;
-        }
-    };
-}
+#include "utils.hpp"
+#include "object.hpp"
 
 uint32_t givePointEventType;
-
-class object {
-protected:
-    SDL_Renderer *const m_renderer;
-    SDL_Texture *m_texture;
-
-    int m_texWidth, m_texHeight;
-
-    float m_x, m_y;
-
-    const int m_startX, m_startY;
-
-    int m_maxX, m_maxY;
-
-    std::unordered_map<int, bool> m_keys;
-public:
-    object(SDL_Renderer *renderer, SDL_Texture *tex, int startX, int startY)
-        : m_renderer{renderer}, m_texture{tex}, m_x{(float)startX}, m_y{(float)startY},
-          m_startX{startX}, m_startY{startY}
-    {
-        if (tex) {
-            int _1;
-            uint32_t _2;
-            sdlCall(SDL_QueryTexture)(tex, &_2, &_1, &m_texWidth, &m_texHeight);
-        }
-        sdlCall(SDL_GetRendererOutputSize)(renderer, &m_maxX, &m_maxY);
-    }
-
-    virtual ~object()
-    {
-
-    }
-
-    virtual void reset()
-    {
-        m_x = m_startX;
-        m_y = m_startY;
-    }
-
-    bool aabb_overlap(const object &other) const
-    {
-        auto checkContainedInRange = [](int start, int end, int num)
-        {
-            return num >= start && num <= end;
-        };
-        bool overlapX = checkContainedInRange(m_x, m_x + m_texWidth, other.m_x);
-        overlapX |= checkContainedInRange(m_x, m_x + m_texWidth, other.m_x + other.m_texWidth);
-        overlapX = checkContainedInRange(other.m_x, other.m_x + other.m_texWidth, m_x);
-        overlapX |= checkContainedInRange(other.m_x, other.m_x + other.m_texWidth, m_x + m_texWidth);
-
-        bool overlapY = checkContainedInRange(m_y, m_y + m_texHeight, other.m_y);
-        overlapY |= checkContainedInRange(m_y, m_y + m_texHeight, other.m_y + other.m_texHeight);
-        overlapY = checkContainedInRange(other.m_y, other.m_y + other.m_texHeight, m_y);
-        overlapY |= checkContainedInRange(other.m_y, other.m_y + other.m_texHeight, m_y + m_texHeight);
-
-        return overlapX && overlapY;
-    }
-
-    // FIXME: Pressed keys should be handled globally
-    virtual void keyDown(int key)
-    {
-        m_keys[key] = true;
-    }
-
-    virtual void keyUp(int key)
-    {
-        m_keys[key] = false;
-    }
-
-    virtual void draw() const
-    {
-        SDL_Rect srcrect = { 0, 0, m_texWidth, m_texHeight };
-        SDL_Rect dstrect = { (int)m_x, (int)m_y, m_texWidth, m_texHeight };
-        sdlCall(SDL_RenderCopy)(m_renderer, m_texture, &srcrect, &dstrect);
-    }
-
-    virtual void update(float deltaTime, const std::vector<std::unique_ptr<object>> &others)
-    {
-        (void)deltaTime; (void)others;
-    }
-};
 
 class paddle : public object {
     const int m_upKey, m_downKey;
@@ -247,23 +126,6 @@ public:
     }
 };
 
-/*
- * Utility function for creating a new texture with new text in place of an old one
- */
-void update_text(SDL_Renderer *renderer, TTF_Font *font, std::string_view newText, SDL_Color color, SDL_Texture *&textOut, int &textWidth, int &textHeight)
-{
-    SDL_Surface *textSurface = sdlCall(TTF_RenderText_Solid)(font, newText.data(), color);
-    if (textOut)
-        sdlCall(SDL_DestroyTexture)(textOut);
-    textOut = sdlCall(SDL_CreateTextureFromSurface)(renderer, textSurface);
-    sdlCall(SDL_FreeSurface)(textSurface);
-
-    uint32_t _1;
-    int _2;
-    sdlCall(SDL_QueryTexture)(textOut, &_1, &_2, &textWidth, &textHeight);
-}
-
-
 class scoreboard : public object
 {
     TTF_Font *const m_font;
@@ -335,13 +197,14 @@ int main()
         SDL_Texture *tex2 = sdlCall(IMG_LoadTexture)(renderer, "ball.png");
 
         std::vector<std::unique_ptr<object>> objects;
-        // Add player 1 paddle to game
+        // Add player paddles to the game
         objects.emplace_back(new paddle{renderer, tex1, 25, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_q, SDLK_a});
-        // Add player 2 paddle to game
         objects.emplace_back(new paddle{renderer, tex1, SCREEN_WIDTH - 25 - 32, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_o, SDLK_l});
-        // Add ball to game
+
+        // Add ball to the game
         objects.emplace_back(new ball{renderer, tex2, SCREEN_WIDTH / 2 - 16, SCREEN_HEIGHT / 2 - 16, 300.0f});
-        // Add scoreboard to game
+
+        // Add scoreboard to the game
         auto &scores = dynamic_cast<scoreboard&>(*objects.emplace_back(new scoreboard{renderer, font, SCREEN_WIDTH / 2, 0}));
 
         std::unique_ptr<const std::string> title;
