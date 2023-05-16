@@ -64,3 +64,8 @@ void object::update(float deltaTime, const std::vector<std::unique_ptr<object>> 
 {
     (void)deltaTime; (void)others;
 }
+
+bool object::can_collide() const
+{
+    return true;
+}

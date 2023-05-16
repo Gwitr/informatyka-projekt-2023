@@ -27,6 +27,7 @@ public:
     object(SDL_Renderer *renderer, SDL_Texture *tex, int startX, int startY);
     virtual ~object();
 
+    virtual bool can_collide() const;
     virtual void reset();
     bool aabb_overlap(const object &other) const;
     virtual void keyDown(int key);

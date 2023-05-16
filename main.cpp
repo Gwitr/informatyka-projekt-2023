@@ -1,3 +1,5 @@
+// g++ -O2 -Wall -Wextra -pedantic -std=c++20 -o main main.cpp object.cpp utils.cpp -lSDL2 -lSDL2_image -lSDL2_ttf -lm
+
 #include <cstdint>           // uint32_t, intptr_t
 #include <cmath>             // sqrtf
 #include <algorithm>         // std::find
@@ -75,6 +77,8 @@ public:
         m_y += m_dirY * m_speed * deltaTime;
         for (auto &obj : others) {
             if (obj.get() == this)
+                continue;
+            if (!obj->can_collide())
                 continue;
 
             if (aabb_overlap(*obj)) {
@@ -175,6 +179,11 @@ public:
             ++m_score2;
 
         update_score_text();
+    }
+
+    virtual bool can_collide() const override
+    {
+        return false;
     }
 };
 
