@@ -19,6 +19,35 @@
 
 uint32_t givePointEventType;
 
+class goal : public object
+{
+    const int m_width, m_holeSize;
+public:
+    goal(SDL_Renderer *renderer, int x, int width, int holeSize)
+        : object{renderer, NULL, x, 0}, m_width{width}, m_holeSize{holeSize}
+    {
+        m_texWidth = width;
+        m_texHeight = SCREEN_HEIGHT;
+    }
+
+    virtual std::vector<SDL_Rect> get_collision_areas() const override
+    {
+        return std::vector {
+            SDL_Rect { (int)m_x, (int)m_y, m_width, (SCREEN_HEIGHT - m_holeSize) / 2 },
+            SDL_Rect { (int)m_x, (int)(m_y + (SCREEN_HEIGHT + m_holeSize) / 2), m_width, (SCREEN_HEIGHT - m_holeSize) / 2 }
+        };
+    }
+
+    virtual void draw() const override
+    {
+        sdlCall(SDL_SetRenderDrawColor)(m_renderer, 0, 0, 0, 255);
+        SDL_Rect rect = { (int)m_x, (int)m_y, m_width, (SCREEN_HEIGHT - m_holeSize) / 2 };
+        SDL_RenderFillRect(m_renderer, &rect);
+        rect.y += (SCREEN_HEIGHT + m_holeSize) / 2;
+        SDL_RenderFillRect(m_renderer, &rect);
+    }
+};
+
 class paddle : public object {
     const int m_upKey, m_downKey;
     const float m_speed;
@@ -32,14 +61,27 @@ public:
 
     virtual void update(float deltaTime, const std::vector<std::unique_ptr<object>> &others) override
     {
-        (void)others;
-
         float prevY = m_y;
 
+        float movement = 0.0f;
+
         if (m_keys[m_upKey])
-            m_y -= m_speed * deltaTime;
+            movement = -m_speed * deltaTime;
         if (m_keys[m_downKey])
-            m_y += m_speed * deltaTime;
+            movement = m_speed * deltaTime;
+        
+        m_y += movement;
+
+        for (auto &other : others) {
+            goal *goalpost = dynamic_cast<goal*>(other.get());
+            if (!goalpost)
+                continue;
+            if (aabb_overlap_all(get_collision_areas(), goalpost->get_collision_areas()))
+            {
+                m_y -= movement;
+                break;
+            }
+        }
 
         // Clamp the Y value
         if (m_y > m_maxY - m_texHeight)
@@ -81,12 +123,12 @@ public:
             if (!obj->can_collide())
                 continue;
 
-            if (aabb_overlap(*obj)) {
+            if (aabb_overlap_all(get_collision_areas(), obj->get_collision_areas())) {
                 if (std::find(m_collided.begin(), m_collided.end(), obj.get()) == m_collided.end()) {
                     m_collided.push_back(obj.get());
                     m_x -= m_dirX * m_speed * deltaTime;
                     m_dirX = -m_dirX;
-                    
+
                     paddle *p = dynamic_cast<paddle*>(obj.get());
                     if (p != NULL) {
                         // Bounce from paddle (not physically accurate in the slightest)
@@ -211,6 +253,18 @@ int main()
         objects.emplace_back(new paddle{renderer, tex1, 25, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_q, SDLK_a});
         objects.emplace_back(new paddle{renderer, tex1, SCREEN_WIDTH - 25 - 32, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_o, SDLK_l});
 
+        // Add player paddles to the game
+        objects.emplace_back(new paddle{renderer, tex1, 25, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_q, SDLK_a});
+        objects.emplace_back(new paddle{renderer, tex1, SCREEN_WIDTH - 25 - 32, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_o, SDLK_l});
+        objects.emplace_back(new paddle{renderer, tex1, 250, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_w, SDLK_s});
+        objects.emplace_back(new paddle{renderer, tex1, SCREEN_WIDTH - 250 - 32, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_i, SDLK_k});
+        objects.emplace_back(new paddle{renderer, tex1, 350, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_e, SDLK_d});
+        objects.emplace_back(new paddle{renderer, tex1, SCREEN_WIDTH - 350 - 32, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_u, SDLK_j});
+
+        // Add goals to the game
+        objects.emplace_back(new goal{renderer, 0, 64, 320});
+        objects.emplace_back(new goal{renderer, SCREEN_WIDTH - 64, 64, 320});
+
         // Add ball to the game
         objects.emplace_back(new ball{renderer, tex2, SCREEN_WIDTH / 2 - 16, SCREEN_HEIGHT / 2 - 16, 300.0f});
 
@@ -220,8 +274,6 @@ int main()
         uint64_t lastFrameTicks = sdlCall(SDL_GetTicks64)();
         float deltaTime = 0.016f;
         bool running = true;
-
-        sdlCall(SDL_SetRenderDrawColor)(renderer, 255, 255, 255, 255);
 
         while (running) {
             // Handle events
@@ -253,6 +305,7 @@ int main()
                 object->update(deltaTime, objects);
 
             // Render
+            sdlCall(SDL_SetRenderDrawColor)(renderer, 255, 255, 255, 255);
             sdlCall(SDL_RenderClear)(renderer);
             for (auto &object : objects)
                 object->draw();

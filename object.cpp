@@ -23,21 +23,21 @@ void object::reset()
     m_y = m_startY;
 }
 
-bool object::aabb_overlap(const object &other) const
+bool aabb_overlap(const SDL_Rect &rect1, const SDL_Rect &rect2)
 {
     auto checkContainedInRange = [](int start, int end, int num)
     {
         return num >= start && num <= end;
     };
-    bool overlapX = checkContainedInRange(m_x, m_x + m_texWidth, other.m_x);
-    overlapX |= checkContainedInRange(m_x, m_x + m_texWidth, other.m_x + other.m_texWidth);
-    overlapX = checkContainedInRange(other.m_x, other.m_x + other.m_texWidth, m_x);
-    overlapX |= checkContainedInRange(other.m_x, other.m_x + other.m_texWidth, m_x + m_texWidth);
+    bool overlapX = checkContainedInRange(rect1.x, rect1.x + rect1.w, rect2.x);
+    overlapX |= checkContainedInRange(rect1.x, rect1.x + rect1.w, rect2.x + rect2.w);
+    overlapX |= checkContainedInRange(rect2.x, rect2.x + rect2.w, rect1.x);
+    overlapX |= checkContainedInRange(rect2.x, rect2.x + rect2.w, rect1.x + rect1.w);
 
-    bool overlapY = checkContainedInRange(m_y, m_y + m_texHeight, other.m_y);
-    overlapY |= checkContainedInRange(m_y, m_y + m_texHeight, other.m_y + other.m_texHeight);
-    overlapY = checkContainedInRange(other.m_y, other.m_y + other.m_texHeight, m_y);
-    overlapY |= checkContainedInRange(other.m_y, other.m_y + other.m_texHeight, m_y + m_texHeight);
+    bool overlapY = checkContainedInRange(rect1.y, rect1.y + rect1.h, rect2.y);
+    overlapY |= checkContainedInRange(rect1.y, rect1.y + rect1.h, rect2.y + rect2.h);
+    overlapY |= checkContainedInRange(rect2.y, rect2.y + rect2.h, rect1.y);
+    overlapY |= checkContainedInRange(rect2.y, rect2.y + rect2.h, rect1.y + rect1.h);
 
     return overlapX && overlapY;
 }
@@ -68,4 +68,9 @@ void object::update(float deltaTime, const std::vector<std::unique_ptr<object>> 
 bool object::can_collide() const
 {
     return true;
+}
+
+std::vector<SDL_Rect> object::get_collision_areas() const
+{
+    return std::vector{ SDL_Rect{ (int)m_x, (int)m_y, m_texWidth, m_texHeight } };
 }
