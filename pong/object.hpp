@@ -4,7 +4,7 @@
 #include <unordered_map>     // std::unordered_map
 #include <vector>            // std::vector
 #include <memory>            // std::unique_ptr
-#include "utils.hpp"
+#include "../utils.hpp"
 #include <iostream>
 
 #define SDL_MAIN_HANDLED

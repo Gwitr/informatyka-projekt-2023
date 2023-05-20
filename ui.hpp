@@ -37,7 +37,7 @@ namespace ui
 
     class text : public widget
     {
-        SDL_Texture *m_tex;
+        SDL_Texture *m_tex = nullptr;
         SDL_Color m_fg;
 
     public:
@@ -55,10 +55,10 @@ namespace ui
 
         void on_event(const SDL_Event &event);
 
-        template<typename T, typename ...Args> requires std::is_base_of_v<widget, T>
-        void add_widget(Args&&... args)
+        template<typename T, typename ...Args>
+        T &add_widget(Args&&... args)
         {
-            m_widgets.emplace_back(new T{ m_renderer, std::forward<Args>(args), ... });
+            return dynamic_cast<T&>(*m_widgets.emplace_back(new T{ m_renderer, std::forward<Args>(args) ... }));
         }
         void remove_widget(const widget &w);
 

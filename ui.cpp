@@ -51,6 +51,8 @@ namespace ui
         SDL_Rect dstrect = get_bounding_box();
         SDL_Rect srcrect = dstrect;
         srcrect.x = srcrect.y = 0;
+        sdlCall(SDL_SetRenderDrawColor)(m_renderer, m_bg.r, m_bg.g, m_bg.b, m_bg.a);
+        sdlCall(SDL_RenderFillRect)(m_renderer, &dstrect);
         sdlCall(SDL_RenderCopy)(m_renderer, m_tex, &srcrect, &dstrect);
     }
 
