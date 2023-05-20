@@ -23,25 +23,6 @@ void object::reset()
     m_y = m_startY;
 }
 
-bool aabb_overlap(const SDL_Rect &rect1, const SDL_Rect &rect2)
-{
-    auto checkContainedInRange = [](int start, int end, int num)
-    {
-        return num >= start && num <= end;
-    };
-    bool overlapX = checkContainedInRange(rect1.x, rect1.x + rect1.w, rect2.x);
-    overlapX |= checkContainedInRange(rect1.x, rect1.x + rect1.w, rect2.x + rect2.w);
-    overlapX |= checkContainedInRange(rect2.x, rect2.x + rect2.w, rect1.x);
-    overlapX |= checkContainedInRange(rect2.x, rect2.x + rect2.w, rect1.x + rect1.w);
-
-    bool overlapY = checkContainedInRange(rect1.y, rect1.y + rect1.h, rect2.y);
-    overlapY |= checkContainedInRange(rect1.y, rect1.y + rect1.h, rect2.y + rect2.h);
-    overlapY |= checkContainedInRange(rect2.y, rect2.y + rect2.h, rect1.y);
-    overlapY |= checkContainedInRange(rect2.y, rect2.y + rect2.h, rect1.y + rect1.h);
-
-    return overlapX && overlapY;
-}
-
 // FIXME: Pressed keys should be handled globally
 void object::keyDown(int key)
 {

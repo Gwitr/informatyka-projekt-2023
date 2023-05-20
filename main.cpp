@@ -16,6 +16,7 @@
 
 #include "utils.hpp"
 #include "object.hpp"
+#include "scene.hpp"
 
 uint32_t givePointEventType;
 
@@ -229,102 +230,162 @@ public:
     }
 };
 
-int main()
+class pong_scene final : public scene
 {
-    SDL_Window *window;
-    SDL_Renderer *renderer;
+    TTF_Font *m_font;
+    SDL_Texture *m_tex1, *m_tex2;
+    std::vector<std::unique_ptr<object>> m_objects;
+    scoreboard *m_scores;
 
-    sdlCall(SDL_Init)(SDL_INIT_EVERYTHING);
-    sdlCall(IMG_Init)(IMG_INIT_JPG | IMG_INIT_PNG);
-    sdlCall(TTF_Init)();
+public:
+    pong_scene(scenes &scenes, SDL_Renderer *renderer, bool hockeyMode)
+        : scene{scenes, renderer}
     {
-        TTF_Font *font = sdlCall(TTF_OpenFont)("Terminus.ttf", 32);
-
-        sdlCall(SDL_CreateWindowAndRenderer)(SCREEN_WIDTH, SCREEN_HEIGHT, 0, &window, &renderer);
-        sdlCall(SDL_SetWindowTitle)(window, "Bouncy games");
-
-        givePointEventType = sdlCall(SDL_RegisterEvents)(1);
-
-        SDL_Texture *tex1 = sdlCall(IMG_LoadTexture)(renderer, "paddle.png");
-        SDL_Texture *tex2 = sdlCall(IMG_LoadTexture)(renderer, "ball.png");
-
-        std::vector<std::unique_ptr<object>> objects;
-        // Add player paddles to the game
-        objects.emplace_back(new paddle{renderer, tex1, 25, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_q, SDLK_a});
-        objects.emplace_back(new paddle{renderer, tex1, SCREEN_WIDTH - 25 - 32, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_o, SDLK_l});
+        m_font = sdlCall(TTF_OpenFont)("Terminus.ttf", 32);
+        m_tex1 = sdlCall(IMG_LoadTexture)(m_renderer, "paddle.png");
+        m_tex2 = sdlCall(IMG_LoadTexture)(m_renderer, "ball.png");
 
         // Add player paddles to the game
-        objects.emplace_back(new paddle{renderer, tex1, 25, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_q, SDLK_a});
-        objects.emplace_back(new paddle{renderer, tex1, SCREEN_WIDTH - 25 - 32, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_o, SDLK_l});
-        objects.emplace_back(new paddle{renderer, tex1, 250, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_w, SDLK_s});
-        objects.emplace_back(new paddle{renderer, tex1, SCREEN_WIDTH - 250 - 32, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_i, SDLK_k});
-        objects.emplace_back(new paddle{renderer, tex1, 350, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_e, SDLK_d});
-        objects.emplace_back(new paddle{renderer, tex1, SCREEN_WIDTH - 350 - 32, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_u, SDLK_j});
+        m_objects.emplace_back(new paddle{m_renderer, m_tex1, 25, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_q, SDLK_a});
+        m_objects.emplace_back(new paddle{m_renderer, m_tex1, SCREEN_WIDTH - 25 - 32, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_o, SDLK_l});
 
-        // Add goals to the game
-        objects.emplace_back(new goal{renderer, 0, 64, 320});
-        objects.emplace_back(new goal{renderer, SCREEN_WIDTH - 64, 64, 320});
+        if (hockeyMode) {
+            // Add more player paddles to the game
+            m_objects.emplace_back(new paddle{m_renderer, m_tex1, 250, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_w, SDLK_s});
+            m_objects.emplace_back(new paddle{m_renderer, m_tex1, SCREEN_WIDTH - 250 - 32, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_i, SDLK_k});
+            m_objects.emplace_back(new paddle{m_renderer, m_tex1, 350, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_e, SDLK_d});
+            m_objects.emplace_back(new paddle{m_renderer, m_tex1, SCREEN_WIDTH - 350 - 32, SCREEN_HEIGHT / 2 - 64, 300.0f, SDLK_u, SDLK_j});
+            // Add goals to the game
+            m_objects.emplace_back(new goal{m_renderer, 0, 64, 320});
+            m_objects.emplace_back(new goal{m_renderer, SCREEN_WIDTH - 64, 64, 320});
+        }
 
         // Add ball to the game
-        objects.emplace_back(new ball{renderer, tex2, SCREEN_WIDTH / 2 - 16, SCREEN_HEIGHT / 2 - 16, 300.0f});
+        m_objects.emplace_back(new ball{m_renderer, m_tex2, SCREEN_WIDTH / 2 - 16, SCREEN_HEIGHT / 2 - 16, 300.0f});
 
         // Add scoreboard to the game
-        auto &scores = dynamic_cast<scoreboard&>(*objects.emplace_back(new scoreboard{renderer, font, SCREEN_WIDTH / 2, 0}));
+        m_scores = dynamic_cast<scoreboard*>(m_objects.emplace_back(new scoreboard{m_renderer, m_font, SCREEN_WIDTH / 2, 0}).get());
+    }
 
-        uint64_t lastFrameTicks = sdlCall(SDL_GetTicks64)();
-        float deltaTime = 0.016f;
-        bool running = true;
+    ~pong_scene()
+    {
+        sdlCall(SDL_DestroyTexture)(m_tex1);
+        sdlCall(SDL_DestroyTexture)(m_tex2);
 
-        while (running) {
-            // Handle events
-            SDL_Event event;
-            while (sdlCall(SDL_PollEvent)(&event)) {
-                if (event.type == SDL_QUIT) {
-                    running = false;
+        sdlCall(TTF_CloseFont)(m_font);
+    }
 
-                } else if (event.type == SDL_KEYDOWN) {
-                    for (auto &object : objects)
-                        object->keyDown(event.key.keysym.sym);
+    void update(float deltaTime) override
+    {
+        for (auto &object : m_objects)
+            object->update(deltaTime, m_objects);
+    }
 
-                } else if (event.type == SDL_KEYUP) {
-                    for (auto &object : objects)
-                        object->keyUp(event.key.keysym.sym);
+    void draw() const override
+    {
+        sdlCall(SDL_SetRenderDrawColor)(m_renderer, 255, 255, 255, 255);
+        sdlCall(SDL_RenderClear)(m_renderer);
 
-                } else if (event.type == givePointEventType) {
-                    // Reset the world
-                    for (auto &object : objects)
-                        object->reset();
+        for (auto &object : m_objects)
+            object->draw();
+    }
 
-                    // Update the score
-                    scores.addPoint((intptr_t)event.user.data1);
+    void on_event(const SDL_Event &event) override
+    {
+        if (event.type == SDL_KEYDOWN) {
+            if (event.key.keysym.sym == SDLK_ESCAPE) {
+                m_scenes.pop_scene();
+            } else {
+                for (auto &object : m_objects) {
+                    object->keyDown(event.key.keysym.sym);
                 }
             }
 
-            // Update
-            for (auto &object : objects)
-                object->update(deltaTime, objects);
+        } else if (event.type == SDL_KEYUP) {
+            for (auto &object : m_objects)
+                object->keyUp(event.key.keysym.sym);
 
-            // Render
-            sdlCall(SDL_SetRenderDrawColor)(renderer, 255, 255, 255, 255);
-            sdlCall(SDL_RenderClear)(renderer);
-            for (auto &object : objects)
-                object->draw();
-            sdlCall(SDL_RenderPresent)(renderer);
+        } else if (event.type == givePointEventType) {
+            // Reset the world
+            for (auto &object : m_objects)
+                object->reset();
 
-            // Lock to 60 FPS
-            uint64_t currentFrameTicks = sdlCall(SDL_GetTicks64)();
-            deltaTime = (currentFrameTicks - lastFrameTicks) / 1000.0f;
-            if (deltaTime < 0.016f) {
-                sdlCall(SDL_Delay)(16 - 1000 * deltaTime);
-            }
-            deltaTime = (sdlCall(SDL_GetTicks64)() - lastFrameTicks) / 1000.0f;
-            lastFrameTicks = currentFrameTicks;
+            // Update the score
+            m_scores->addPoint((intptr_t)event.user.data1);
         }
+    }
+};
 
-        sdlCall(SDL_DestroyTexture)(tex1);
-        sdlCall(SDL_DestroyTexture)(tex2);
+class menu_scene final : public scene
+{
+    SDL_Texture *m_pongModeButton, *m_hockeyModeButton;
+    int m_pongModeButtonW, m_hockeyModeButtonW, m_textHeight;
+public:
+    menu_scene(scenes &scenes, SDL_Renderer *renderer)
+        : scene{scenes, renderer}
+    {
+        TTF_Font *font = sdlCall(TTF_OpenFont)("Terminus.ttf", 32);
+
+        int dummy;
+        m_pongModeButton = render_text(m_renderer, font, "Play Pong", { 255, 255, 255, 255 }, m_pongModeButtonW, m_textHeight);
+        m_hockeyModeButton = render_text(m_renderer, font, "Play Hockey", { 255, 255, 255, 255 }, m_hockeyModeButtonW, dummy);
 
         sdlCall(TTF_CloseFont)(font);
+    }
+
+    void draw() const override
+    {
+        sdlCall(SDL_SetRenderDrawColor)(m_renderer, 0, 0, 0, 255);
+        sdlCall(SDL_RenderClear)(m_renderer);
+
+        const auto [windowW, windowH] = m_scenes.window_dimensions();
+
+        SDL_Rect srcrect, dstrect;
+
+        dstrect = { windowW / 2 - m_pongModeButtonW / 2, windowH / 2 - m_textHeight / 2 + m_textHeight, m_pongModeButtonW, m_textHeight };
+        srcrect = dstrect;
+        srcrect.x = srcrect.y = 0;
+        sdlCall(SDL_RenderCopy)(m_renderer, m_pongModeButton, &srcrect, &dstrect);
+
+        dstrect = { windowW / 2 - m_hockeyModeButtonW / 2, windowH / 2 - m_textHeight / 2, m_hockeyModeButtonW, m_textHeight };
+        srcrect = dstrect;
+        srcrect.x = srcrect.y = 0;
+        sdlCall(SDL_RenderCopy)(m_renderer, m_hockeyModeButton, &srcrect, &dstrect);
+    }
+
+    void update(float deltaTime) override
+    {
+        (void)deltaTime;
+    }
+
+    virtual void on_event(const SDL_Event &event) override
+    {
+        const auto [windowW, windowH] = m_scenes.window_dimensions();
+
+        if (event.type == SDL_MOUSEBUTTONDOWN) {
+            if (event.button.button == SDL_BUTTON_LEFT) {
+                int x, y;
+                sdlCall(SDL_GetMouseState)(&x, &y);
+                if (aabb_overlap({ windowW / 2 - m_pongModeButtonW / 2, windowH / 2 - m_textHeight / 2 + m_textHeight, m_pongModeButtonW, m_textHeight }, { x, y, 1, 1 }))
+                    m_scenes.push_scene<pong_scene>(false);
+                else if (aabb_overlap({ windowW / 2 - m_hockeyModeButtonW / 2, windowH / 2 - m_textHeight / 2, m_hockeyModeButtonW, m_textHeight }, { x, y, 1, 1 }))
+                    m_scenes.push_scene<pong_scene>(true);
+            }
+        }
+    }
+};
+
+int main()
+{
+    sdlCall(SDL_Init)(SDL_INIT_EVERYTHING);
+    sdlCall(IMG_Init)(IMG_INIT_JPG | IMG_INIT_PNG);
+    sdlCall(TTF_Init)();
+    givePointEventType = sdlCall(SDL_RegisterEvents)(1);
+
+    {
+        scenes sceneStack{SCREEN_WIDTH, SCREEN_HEIGHT, "Bouncy games"};
+        sceneStack.push_scene<menu_scene>();
+        sceneStack.mainloop();
     }
 
     sdlCall(TTF_Quit)();
