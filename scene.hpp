@@ -53,6 +53,14 @@ public:
     template<typename T, typename ...Args> requires std::is_base_of_v<scene, T>  // Fancy C++20 feature to ensure you don't pass in some random type
     void push_scene(Args&&... args)  // This method takes in an arbitrary amount of arguments
     {
+        // Notify the current active scene that it is about to be deactivated
+        auto last = m_scenes.end();
+        if (last != m_scenes.begin()) {
+            // ...if one exists, of course.
+            --last;
+            (*last)->deactivate();
+        }
+
         // Each scene type is actually expected to take a `scenes&` as its first argument, and an SDL_Renderer* as its second.
         // The push_scene method is basically a more convenient way to construct scene objects, too, as you don't need to pass
         // those 2 arguments in, it's all done automatically.

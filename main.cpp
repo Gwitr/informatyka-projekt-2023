@@ -359,6 +359,8 @@ public:
     }
 };
 
+const int SCREEN_WIDTH = 1080, SCREEN_HEIGHT = 810;
+
 int main()
 {
     // srand(time(NULL));
