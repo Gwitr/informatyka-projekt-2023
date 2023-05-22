@@ -83,15 +83,19 @@ void scenes::mainloop()
             } else {
                 // Only send events to the active scene
                 auto last = m_scenes.end();
-                --last;
-                (*last)->on_event(event);
+                if (last != m_scenes.begin()) {
+                    --last;
+                    (*last)->on_event(event);
+                }
             }
         }
 
         // Only update the last scene
         auto last = m_scenes.end();
-        --last;
-        (*last)->update(deltaTime);
+        if (last != m_scenes.begin()) {
+            --last;
+            (*last)->update(deltaTime);
+        }
 
         // Draw every scene, making sure the active scene is drawn last (so, on top of all the other ones)
         for (const auto &scene : m_scenes)
@@ -125,6 +129,8 @@ void scenes::pop_scene()
 
     // Notify the new active scene that it is back to living
     last = m_scenes.end();
-    --last;
-    (*last)->activate();
+    if (last != m_scenes.begin()) {
+        --last;
+        (*last)->activate();
+    }
 }

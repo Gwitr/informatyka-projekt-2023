@@ -12,6 +12,8 @@
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_ttf.h>
 
+const int SCREEN_WIDTH = 1080, SCREEN_HEIGHT = 810;
+
 // This function calculates if 2 axis-aligned rectangles overlap
 bool aabb_overlap(const SDL_Rect &rect1, const SDL_Rect &rect2);
 
