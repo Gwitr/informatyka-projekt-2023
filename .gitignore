@@ -1,5 +1,9 @@
 main
 .vscode
+include/*
+!include/.gitkeep
+build/*
+!build/.gitkeep
 Terminus.ttf
 games.zip
 PAT.txt

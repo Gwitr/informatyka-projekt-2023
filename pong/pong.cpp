@@ -1,4 +1,5 @@
 #include "pong.hpp"
+#include <cmath>
 
 uint32_t givePointEventType;
 
