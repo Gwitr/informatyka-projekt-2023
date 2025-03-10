@@ -1,5 +1,6 @@
 #include "pong.hpp"
 #include <cmath>
+#include <algorithm>
 
 uint32_t givePointEventType;  // The definition for the extern givePointEventType variable
 
